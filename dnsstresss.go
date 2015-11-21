@@ -17,7 +17,7 @@ var targetDomain string
 var resolver string
 
 func init() {
-	flag.IntVar(&concurrency, "concurrency", 5000,
+	flag.IntVar(&concurrency, "concurrency", 50,
 		"Internal buffer")
 	flag.IntVar(&displayInterval, "d", 1000,
 		"Update interval of the stats (in ms)")
@@ -103,7 +103,7 @@ func displayStats(channel chan result) {
 			elapsedSeconds := float64(time.Since(start)) / float64(time.Second)
 
 			fmt.Printf(
-				"Requests sent: %dr/s (%d total)",
+				"Requests sent: %dr/s\t(%d total)",
 				round(float64(sent)/elapsedSeconds),
 				total+sent,
 			)
@@ -146,7 +146,7 @@ func linear(threadID int, domain string, sentCounterCh chan result) {
 	}
 
 	// Every N steps, we will tell the stats module how many requests we sent
-	displayStep := 10
+	displayStep := 5
 	errors := 0
 
 	client := new(dns.Client)

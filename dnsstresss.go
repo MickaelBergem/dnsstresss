@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"net"
+	"github.com/miekg/dns"
 	"os"
 	"strings"
 	"time"
@@ -14,6 +14,7 @@ var concurrency int
 var displayInterval int
 var verbose bool
 var targetDomain string
+var resolver string
 
 func init() {
 	flag.IntVar(&concurrency, "concurrency", 5000,
@@ -22,6 +23,8 @@ func init() {
 		"Update interval of the stats (in ms)")
 	flag.BoolVar(&verbose, "v", false,
 		"Verbose logging")
+	flag.StringVar(&resolver, "r", "127.0.0.1:53",
+		"Resolver to test against")
 }
 
 func main() {
@@ -63,6 +66,9 @@ func main() {
 	}
 	fmt.Printf("Started %d threads.\n", concurrency)
 
+	go timerStats(sentCounterCh)
+	fmt.Printf("Started timer channel.\n")
+
 	displayStats(sentCounterCh)
 }
 
@@ -72,13 +78,11 @@ func displayStats(channel chan int) {
 	sent := 0
 	total := 0
 	for {
-		// Read the channel
-		select {
-		case added := <-channel:
-			// If we have threads sending us their number of sent requests
-			sent += added
-		default:
-			// As soon as we can, we display the updated stats
+		// Read the channel and add the number of sent messages
+		added := <-channel
+		sent += added
+		if added == 0 {
+			// Something has asked for a display flush
 			fmt.Printf(
 				"Requests sent: %d\tRate: %dr/s\n",
 				total+sent,
@@ -87,8 +91,15 @@ func displayStats(channel chan int) {
 			start = time.Now()
 			total += sent
 			sent = 0
-			time.Sleep(time.Duration(displayInterval) * time.Millisecond)
 		}
+	}
+}
+
+func timerStats(channel chan int) {
+	for {
+		timer := time.NewTimer(time.Duration(displayInterval) * time.Millisecond)
+		<-timer.C
+		channel <- 0
 	}
 }
 
@@ -100,12 +111,15 @@ func linear(threadID int, domain string, sentCounterCh chan int) {
 	// Every N steps, we will tell the stats module how many requests we sent
 	displayStep := 10
 
+	c := new(dns.Client)
+	message := new(dns.Msg).SetQuestion(domain, dns.TypeA)
+
 	for {
 		for i := 0; i < displayStep; i++ {
 			// Try to resolve the domain
-			ip, err := net.ResolveIPAddr("ip4", domain)
+			_, _, err := c.Exchange(message, resolver)
 			if err != nil {
-				fmt.Printf("%s error: % (%s)\n", domain, err, ip)
+				fmt.Printf("%s error: % (%s)\n", domain, err, resolver)
 			}
 		}
 		// Update the counter of sent requests

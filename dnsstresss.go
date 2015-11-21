@@ -13,6 +13,7 @@ import (
 var concurrency int
 var displayInterval int
 var verbose bool
+var iterative bool
 var targetDomain string
 var resolver string
 
@@ -23,6 +24,8 @@ func init() {
 		"Update interval of the stats (in ms)")
 	flag.BoolVar(&verbose, "v", false,
 		"Verbose logging")
+	flag.BoolVar(&iterative, "i", false,
+		"Do an iterative query instead of recursive (to stress authoritative nameservers)")
 	flag.StringVar(&resolver, "r", "127.0.0.1:53",
 		"Resolver to test against")
 }
@@ -89,6 +92,9 @@ func linearResolver(threadID int, domain string, sentCounterCh chan result) {
 
 	client := new(dns.Client)
 	message := new(dns.Msg).SetQuestion(domain, dns.TypeA)
+	if iterative {
+		message.RecursionDesired = false
+	}
 
 	for {
 		for i := 0; i < displayStep; i++ {

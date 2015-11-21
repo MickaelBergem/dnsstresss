@@ -27,6 +27,11 @@ func init() {
 		"Resolver to test against")
 }
 
+type result struct {
+	sent int
+	err  int
+}
+
 func main() {
 	fmt.Printf("dnsstresss - dns stress tool\n")
 
@@ -54,7 +59,7 @@ func main() {
 	fmt.Printf("Queried domain is %s.\n", targetDomain)
 
 	// Create a channel for communicating the number of sent messages
-	sentCounterCh := make(chan int, concurrency)
+	sentCounterCh := make(chan result, concurrency)
 
 	// Run concurrently
 	for threadID := 0; threadID < concurrency; threadID++ {
@@ -72,57 +77,95 @@ func main() {
 	displayStats(sentCounterCh)
 }
 
-func displayStats(channel chan int) {
+func round(val float64) int {
+	// Go seemed a sweet language in the beginning...
+	if val < 0 {
+		return int(val - 0.5)
+	}
+	return int(val + 0.5)
+}
+
+func displayStats(channel chan result) {
 	// Displays every N seconds the number of sent requests, and the rate
 	start := time.Now()
 	sent := 0
+	errors := 0
 	total := 0
 	for {
 		// Read the channel and add the number of sent messages
 		added := <-channel
-		sent += added
-		if added == 0 {
+		sent += added.sent
+		errors += added.err
+
+		if added.sent == 0 {
 			// Something has asked for a display flush
+
+			elapsedSeconds := float64(time.Since(start)) / float64(time.Second)
+
 			fmt.Printf(
-				"Requests sent: %d\tRate: %dr/s\n",
+				"Requests sent: %dr/s (%d total)",
+				round(float64(sent)/elapsedSeconds),
 				total+sent,
-				int(float64(sent)/(float64(time.Since(start))/float64(time.Second))),
 			)
+			// Successful requests? (replies received)
+			fmt.Printf(
+				"\tReplies received: %dr/s",
+				round(float64(sent-errors)/elapsedSeconds),
+			)
+
+			if errors > 0 {
+				fmt.Printf(
+					"\t Errors: %d (%d%%)",
+					errors,
+					100*errors/sent,
+				)
+			}
+			fmt.Print("\n")
+
 			start = time.Now()
 			total += sent
 			sent = 0
+			errors = 0
 		}
 	}
 }
 
-func timerStats(channel chan int) {
+func timerStats(channel chan result) {
+	// Periodically triggers a display update for the stats
 	for {
 		timer := time.NewTimer(time.Duration(displayInterval) * time.Millisecond)
 		<-timer.C
-		channel <- 0
+		channel <- result{0, 0}
 	}
 }
 
-func linear(threadID int, domain string, sentCounterCh chan int) {
+func linear(threadID int, domain string, sentCounterCh chan result) {
+	// Resolve the domain as fast as possible
 	if verbose {
 		fmt.Printf("Starting thread #%d.\n", threadID)
 	}
 
 	// Every N steps, we will tell the stats module how many requests we sent
 	displayStep := 10
+	errors := 0
 
-	c := new(dns.Client)
+	client := new(dns.Client)
 	message := new(dns.Msg).SetQuestion(domain, dns.TypeA)
 
 	for {
 		for i := 0; i < displayStep; i++ {
 			// Try to resolve the domain
-			_, _, err := c.Exchange(message, resolver)
+			_, _, err := client.Exchange(message, resolver)
 			if err != nil {
-				fmt.Printf("%s error: % (%s)\n", domain, err, resolver)
+				if verbose {
+					fmt.Printf("%s error: % (%s)\n", domain, err, resolver)
+				}
+				errors++
 			}
 		}
-		// Update the counter of sent requests
-		sentCounterCh <- displayStep
+
+		// Update the counter of sent requests and requests
+		sentCounterCh <- result{displayStep, errors}
+		errors = 0
 	}
 }

@@ -66,6 +66,9 @@ func main() {
 	}
 	fmt.Printf("Started %d threads.\n", concurrency)
 
+	go timerStats(sentCounterCh)
+	fmt.Printf("Started timer channel.\n")
+
 	displayStats(sentCounterCh)
 }
 
@@ -75,13 +78,11 @@ func displayStats(channel chan int) {
 	sent := 0
 	total := 0
 	for {
-		// Read the channel
-		select {
-		case added := <-channel:
-			// If we have threads sending us their number of sent requests
-			sent += added
-		default:
-			// As soon as we can, we display the updated stats
+		// Read the channel and add the number of sent messages
+		added := <-channel
+		sent += added
+		if added == 0 {
+			// Something has asked for a display flush
 			fmt.Printf(
 				"Requests sent: %d\tRate: %dr/s\n",
 				total+sent,
@@ -90,8 +91,15 @@ func displayStats(channel chan int) {
 			start = time.Now()
 			total += sent
 			sent = 0
-			time.Sleep(time.Duration(displayInterval) * time.Millisecond)
 		}
+	}
+}
+
+func timerStats(channel chan int) {
+	for {
+		timer := time.NewTimer(time.Duration(displayInterval) * time.Millisecond)
+		<-timer.C
+		channel <- 0
 	}
 }
 

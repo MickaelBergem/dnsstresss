@@ -80,7 +80,7 @@ func main() {
 	displayStats(sentCounterCh)
 }
 
-func linearResolver(threadID int, domain string, sentCounterCh chan result) {
+func linearResolver(threadID int, domain string, sentCounterCh chan<- result) {
 	// Resolve the domain as fast as possible
 	if verbose {
 		fmt.Printf("Starting thread #%d.\n", threadID)

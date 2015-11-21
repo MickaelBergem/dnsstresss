@@ -13,7 +13,7 @@ func round(val float64) int {
 	return int(val + 0.5)
 }
 
-func displayStats(channel chan result) {
+func displayStats(channel <-chan result) {
 	// Displays every N seconds the number of sent requests, and the rate
 	start := time.Now()
 	sent := 0
@@ -58,7 +58,7 @@ func displayStats(channel chan result) {
 	}
 }
 
-func timerStats(channel chan result) {
+func timerStats(channel chan<- result) {
 	// Periodically triggers a display update for the stats
 	for {
 		timer := time.NewTimer(time.Duration(displayInterval) * time.Millisecond)

@@ -14,7 +14,6 @@ var concurrency int
 var displayInterval int
 var verbose bool
 var iterative bool
-var targetDomain string
 var resolver string
 
 func init() {
@@ -42,7 +41,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, strings.Join([]string{
 			"\"resolve\" mass resolve DNS A records for domains names read from stdin.",
 			"",
-			"Usage: resolve [option ...] targetdomain",
+			"Usage: resolve [option ...] targetdomain [targetdomain [...] ]",
 			"",
 		}, "\n"))
 		flag.PrintDefaults()
@@ -50,23 +49,17 @@ func main() {
 
 	flag.Parse()
 
-	// We need exactly one parameter (the target domain)
-	if flag.NArg() != 1 {
-		flag.Usage()
-		os.Exit(1)
-	}
+	// all remaining parameters are treated as domains to be used in round-robin in the threads
+	targetDomains := flag.Args()
 
-	// The target domain should be the first (and only) parameter
-	targetDomain := flag.Args()[0]
-
-	fmt.Printf("Queried domain is %s.\n", targetDomain)
+	fmt.Printf("Queried domains are %v.\n", targetDomains)
 
 	// Create a channel for communicating the number of sent messages
 	sentCounterCh := make(chan result, concurrency)
 
 	// Run concurrently
 	for threadID := 0; threadID < concurrency; threadID++ {
-		go linearResolver(threadID, targetDomain, sentCounterCh)
+		go linearResolver(threadID, targetDomains[threadID%len(targetDomains)], sentCounterCh)
 		if concurrency <= 10000 {
 			// Small delay so that the real-time stats are more accurate
 			time.Sleep(1 * time.Millisecond)

@@ -8,7 +8,6 @@ import (
 	"math/big"
 	"os"
 	"strings"
-	"time"
 )
 
 // Runtime options
@@ -67,10 +66,6 @@ func main() {
 	// Run concurrently
 	for threadID := 0; threadID < concurrency; threadID++ {
 		go linearResolver(threadID, targetDomains[threadID%len(targetDomains)], sentCounterCh)
-		if concurrency <= 10000 {
-			// Small delay so that the real-time stats are more accurate
-			time.Sleep(1 * time.Millisecond)
-		}
 	}
 	fmt.Printf("Started %d threads.\n", concurrency)
 

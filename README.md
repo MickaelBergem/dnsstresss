@@ -16,12 +16,14 @@ Then:
 
     ./dnsstresss -h
     dnsstresss - dns stress tool
-    "resolve" mass resolve DNS A records for domains names read from stdin.
+    Send DNS requests as fast as possible to a given server and display the rate.
 
-    Usage: resolve [option ...] targetdomain
-      -concurrency=5000: Internal buffer
-      -d=1000: Update interval of the stats (in ms)
-      -v=false: Verbose logging
+    Usage: dnsstresss [option ...] targetdomain
+    -concurrency=50: Internal buffer
+    -d=1000: Update interval of the stats (in ms)
+    -r="127.0.0.1:53": Resolver to test against
+    -v=false: Verbose logging
+
 
 Example:
 

@@ -49,9 +49,9 @@ func main() {
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, strings.Join([]string{
-			"\"resolve\" mass resolve DNS A records for domains names read from stdin.",
+			"Send DNS requests as fast as possible to a given server and display the rate.",
 			"",
-			"Usage: resolve [option ...] targetdomain [targetdomain [...] ]",
+			"Usage: dnsstresss [option ...] targetdomain [targetdomain [...] ]",
 			"",
 		}, "\n"))
 		flag.PrintDefaults()
@@ -67,7 +67,7 @@ func main() {
 	// all remaining parameters are treated as domains to be used in round-robin in the threads
 	targetDomains := flag.Args()
 
-	fmt.Printf("Queried domains are %v.\n", targetDomains)
+	fmt.Printf("Queried domains: %v.\n", targetDomains)
 
 	// Create a channel for communicating the number of sent messages
 	sentCounterCh := make(chan result, concurrency)
@@ -81,6 +81,8 @@ func main() {
 	if !flood {
 		go timerStats(sentCounterCh)
 		fmt.Printf("Started timer channel.\n")
+	} else {
+		fmt.Println("Flooding mode, nothing will be printed.")
 	}
 	// We still need this useless routine to empty the channels, even when flooding
 	displayStats(sentCounterCh)
@@ -95,7 +97,7 @@ func linearResolver(threadID int, domain string, sentCounterCh chan<- result) {
 
 	// Every N steps, we will tell the stats module how many requests we sent
 	displayStep := 5
-	maxRequestId := big.NewInt(65536)
+	maxRequestID := big.NewInt(65536)
 	errors := 0
 
 	message := new(dns.Msg).SetQuestion(domain, dns.TypeA)
@@ -108,7 +110,7 @@ func linearResolver(threadID int, domain string, sentCounterCh chan<- result) {
 			// Try to resolve the domain
 			if randomIds {
 				// Regenerate message Id to avoid servers dropping (seemingly) duplicate messages
-				newid, _ := rand.Int(rand.Reader, maxRequestId)
+				newid, _ := rand.Int(rand.Reader, maxRequestID)
 				message.Id = uint16(newid.Int64())
 			}
 
@@ -142,14 +144,7 @@ func dnsExchange(resolver string, message *dns.Msg) error {
 
 	// Actually send the message and wait for answer
 	co.WriteMsg(message)
-	if flood {
-		fmt.Print(".")
-	}
+
 	_, err = co.ReadMsg()
-	if flood {
-		//FIXME: When reaching the end of the terminal, a newline is inserted
-		//Once the line has changed, this can't go back to the previous line
-		fmt.Print("\b \b")
-	}
 	return err
 }

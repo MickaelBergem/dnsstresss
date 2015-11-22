@@ -1,9 +1,11 @@
 package main
 
 import (
+	"crypto/rand"
 	"flag"
 	"fmt"
 	"github.com/miekg/dns"
+	"math/big"
 	"os"
 	"strings"
 	"time"
@@ -15,6 +17,7 @@ var displayInterval int
 var verbose bool
 var iterative bool
 var resolver string
+var randomIds bool
 
 func init() {
 	flag.IntVar(&concurrency, "concurrency", 50,
@@ -23,6 +26,8 @@ func init() {
 		"Update interval of the stats (in ms)")
 	flag.BoolVar(&verbose, "v", false,
 		"Verbose logging")
+	flag.BoolVar(&randomIds, "random", false,
+		"Use random Request Identifiers for each query")
 	flag.BoolVar(&iterative, "i", false,
 		"Do an iterative query instead of recursive (to stress authoritative nameservers)")
 	flag.StringVar(&resolver, "r", "127.0.0.1:53",
@@ -81,6 +86,7 @@ func linearResolver(threadID int, domain string, sentCounterCh chan result) {
 
 	// Every N steps, we will tell the stats module how many requests we sent
 	displayStep := 5
+	maxRequestId := big.NewInt(65536)
 	errors := 0
 
 	client := new(dns.Client)
@@ -92,6 +98,11 @@ func linearResolver(threadID int, domain string, sentCounterCh chan result) {
 	for {
 		for i := 0; i < displayStep; i++ {
 			// Try to resolve the domain
+			if randomIds {
+				// Regenerate message Id to avoid servers dropping (seemingly) duplicate messages
+				newid, _ := rand.Int(rand.Reader, maxRequestId)
+				message.Id = uint16(newid.Int64())
+			}
 			_, _, err := client.Exchange(message, resolver)
 			if err != nil {
 				if verbose {

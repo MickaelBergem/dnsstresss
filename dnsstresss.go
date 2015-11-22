@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/miekg/dns"
 	"math/big"
+	"net"
 	"os"
 	"strings"
 )
@@ -18,6 +19,7 @@ var (
 	iterative       bool
 	resolver        string
 	randomIds       bool
+	flood           bool
 )
 
 func init() {
@@ -33,6 +35,8 @@ func init() {
 		"Do an iterative query instead of recursive (to stress authoritative nameservers)")
 	flag.StringVar(&resolver, "r", "127.0.0.1:53",
 		"Resolver to test against")
+	flag.BoolVar(&flood, "f", false,
+		"Don't wait for an answer before sending another")
 }
 
 type result struct {
@@ -69,10 +73,13 @@ func main() {
 	}
 	fmt.Printf("Started %d threads.\n", concurrency)
 
-	go timerStats(sentCounterCh)
-	fmt.Printf("Started timer channel.\n")
-
+	if !flood {
+		go timerStats(sentCounterCh)
+		fmt.Printf("Started timer channel.\n")
+	}
+	// We still need this useless routine to empty the channels, even when flooding
 	displayStats(sentCounterCh)
+
 }
 
 func linearResolver(threadID int, domain string, sentCounterCh chan<- result) {
@@ -86,7 +93,6 @@ func linearResolver(threadID int, domain string, sentCounterCh chan<- result) {
 	maxRequestId := big.NewInt(65536)
 	errors := 0
 
-	client := new(dns.Client)
 	message := new(dns.Msg).SetQuestion(domain, dns.TypeA)
 	if iterative {
 		message.RecursionDesired = false
@@ -100,12 +106,17 @@ func linearResolver(threadID int, domain string, sentCounterCh chan<- result) {
 				newid, _ := rand.Int(rand.Reader, maxRequestId)
 				message.Id = uint16(newid.Int64())
 			}
-			_, _, err := client.Exchange(message, resolver)
-			if err != nil {
-				if verbose {
-					fmt.Printf("%s error: % (%s)\n", domain, err, resolver)
+
+			if flood {
+				go dnsExchange(resolver, message)
+			} else {
+				err := dnsExchange(resolver, message)
+				if err != nil {
+					if verbose {
+						fmt.Printf("%s error: % (%s)\n", domain, err, resolver)
+					}
+					errors++
 				}
-				errors++
 			}
 		}
 
@@ -113,4 +124,27 @@ func linearResolver(threadID int, domain string, sentCounterCh chan<- result) {
 		sentCounterCh <- result{displayStep, errors}
 		errors = 0
 	}
+}
+
+func dnsExchange(resolver string, message *dns.Msg) error {
+	//XXX: How can we share the connection between subsequent attempts ?
+	dnsconn, err := net.Dial("udp", resolver)
+	if err != nil {
+		return err
+	}
+	co := &dns.Conn{Conn: dnsconn}
+	defer co.Close()
+
+	// Actually send the message and wait for answer
+	co.WriteMsg(message)
+	if flood {
+		fmt.Print(".")
+	}
+	_, err = co.ReadMsg()
+	if flood {
+		//FIXME: When reaching the end of the terminal, a newline is inserted
+		//Once the line has changed, this can't go back to the previous line
+		fmt.Print("\b \b")
+	}
+	return err
 }

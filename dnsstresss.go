@@ -12,12 +12,14 @@ import (
 )
 
 // Runtime options
-var concurrency int
-var displayInterval int
-var verbose bool
-var iterative bool
-var resolver string
-var randomIds bool
+var (
+	concurrency     int
+	displayInterval int
+	verbose         bool
+	iterative       bool
+	resolver        string
+	randomIds       bool
+)
 
 func init() {
 	flag.IntVar(&concurrency, "concurrency", 50,

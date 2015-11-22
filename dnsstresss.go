@@ -59,6 +59,11 @@ func main() {
 
 	flag.Parse()
 
+	// We need at least one target domain
+	if flag.NArg() < 1 {
+		flag.Usage()
+		os.Exit(1)
+	}
 	// all remaining parameters are treated as domains to be used in round-robin in the threads
 	targetDomains := flag.Args()
 

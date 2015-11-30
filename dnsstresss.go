@@ -65,7 +65,14 @@ func main() {
 		os.Exit(1)
 	}
 	// all remaining parameters are treated as domains to be used in round-robin in the threads
-	targetDomains := flag.Args()
+	targetDomains := make([]string, flag.NArg())
+	for index, element := range flag.Args() {
+		if element[len(element)-1] == '.' {
+			targetDomains[index] = element
+		} else {
+			targetDomains[index] = element + "."
+		}
+	}
 
 	fmt.Printf("Queried domains: %v.\n", targetDomains)
 

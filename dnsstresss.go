@@ -48,17 +48,15 @@ func main() {
 
 	parseCommandLine()
 
-	if verbosity >= Verb_INFO {
-		fmt.Printf("Queried domains: %v.\n", targetDomains)
-	}
-
 	// Create a channel for communicating the number of sent messages
 	controlChannel := make(chan ControlMsg)
+	defer close(controlChannel)
 
 	if flood {
 		go runFlood()
 	} else {
 		sentCounterCh := make(chan result, concurrency)
+		defer close(sentCounterCh)
 		go timerStats(controlChannel)
 		go displayStats(sentCounterCh, controlChannel)
 		go runWorkers(sentCounterCh)
@@ -70,9 +68,10 @@ func main() {
 	fmt.Println("Press ENTER to quit")
 	fmt.Scanln()
 
-	controlChannel <- DoTotal
-	controlChannel <- DoClose
-	close(controlChannel)
+	if !flood {
+		controlChannel <- DoTotal
+		controlChannel <- DoClose
+	}
 }
 
 func runWorkers(sharedChannel chan result) {
@@ -85,8 +84,27 @@ func runWorkers(sharedChannel chan result) {
 	}
 }
 
+func initConn() (*dns.Conn, error) {
+	dnsconn, err := net.Dial("udp", resolver)
+	if err != nil {
+		if verbosity >= Verb_WARN {
+			fmt.Printf("%s error: % (%s)\n", err, resolver)
+		}
+		return nil, err
+	}
+	co := &dns.Conn{Conn: dnsconn}
+	return co, nil
+}
+
+func composeMessage(domain string) *dns.Msg {
+	message := new(dns.Msg).SetQuestion(domain, dns.TypeA)
+	if iterative {
+		message.RecursionDesired = false
+	}
+	return message
+}
+
 func linearResolver(threadID int, domain string, sentCounterCh chan<- result) {
-	// Resolve the domain as fast as possible
 	if verbosity >= Verb_DEBUG {
 		fmt.Printf("Starting thread #%d.\n", threadID)
 	}
@@ -96,55 +114,49 @@ func linearResolver(threadID int, domain string, sentCounterCh chan<- result) {
 	maxRequestID := big.NewInt(65536)
 	errors := 0
 
-	message := new(dns.Msg).SetQuestion(domain, dns.TypeA)
-	if iterative {
-		message.RecursionDesired = false
-	}
-	dnsconn, err := net.Dial("udp", resolver)
-	if err != nil {
-		if verbosity >= Verb_WARN {
-			fmt.Printf("%s error: % (%s)\n", domain, err, resolver)
-		}
+	if co, err := initConn(); err != nil {
 		sentCounterCh <- result{0, 1}
 		return
-	}
-	co := &dns.Conn{Conn: dnsconn}
-	defer co.Close()
+	} else {
+		defer co.Close()
 
-	for {
-		nbSent := 0
-		for i := 0; i < displayStep; i++ {
-			// Try to resolve the domain
-			if randomIds {
-				// Regenerate message Id to avoid servers dropping (seemingly) duplicate messages
-				newid, _ := rand.Int(rand.Reader, maxRequestID)
-				message.Id = uint16(newid.Int64())
-			}
+		message := composeMessage(domain)
 
-			// Actually send the message and wait for answer
-			err = co.WriteMsg(message)
-			if err != nil {
-				if verbosity >= Verb_ERR {
-					fmt.Printf("%s error: % (%s)\n", domain, err, resolver)
+		for {
+			nbSent := 0
+			for i := 0; i < displayStep; i++ {
+				// Try to resolve the domain
+				if randomIds {
+					// Regenerate message Id to avoid servers dropping (seemingly) duplicate messages
+					newid, _ := rand.Int(rand.Reader, maxRequestID)
+					message.Id = uint16(newid.Int64())
 				}
-				sentCounterCh <- result{0, 1}
-				return
-			}
-			nbSent++
 
-			_, err = co.ReadMsg()
-			if err != nil {
-				if verbosity >= Verb_DEBUG {
-					fmt.Printf("%s error: % (%s)\n", domain, err, resolver)
+				// Actually send the message and wait for answer
+				err = co.WriteMsg(message)
+				if err != nil {
+					if verbosity >= Verb_ERR {
+						fmt.Printf("%s error: % (%s)\n", domain, err, resolver)
+					}
+					sentCounterCh <- result{0, 1}
+					return
 				}
-				errors++
+				nbSent++
+
+				_, err = co.ReadMsg()
+				if err != nil {
+					if verbosity >= Verb_DEBUG {
+						fmt.Printf("%s error: % (%s)\n", domain, err, resolver)
+					}
+					errors++
+				}
+				err = nil
 			}
-			err = nil
+
+			// Update the counter of sent requests and requests
+			sentCounterCh <- result{nbSent, errors}
+			errors = 0
 		}
-
-		// Update the counter of sent requests and requests
-		sentCounterCh <- result{nbSent, errors}
-		errors = 0
 	}
 }
 
@@ -202,7 +214,27 @@ func parseCommandLine() {
 			targetDomains[index] = element + "."
 		}
 	}
+
+	if verbosity >= Verb_INFO {
+		fmt.Printf("Queried domains: %v.\n", targetDomains)
+	}
+
 }
 
 func runFlood() {
+	for threadID := 0; threadID < concurrency; threadID++ {
+		go floodNoWait(targetDomains[threadID%len(targetDomains)])
+	}
+}
+
+func floodNoWait(domain string) {
+	if co, err := initConn(); err != nil {
+		return
+	} else {
+		defer co.Close()
+		message := composeMessage(domain)
+		for {
+			co.WriteMsg(message)
+		}
+	}
 }

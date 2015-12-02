@@ -44,6 +44,14 @@ type result struct {
 	err  int
 }
 
+type ControlMsg uint
+
+const (
+	DoFlush ControlMsg = iota
+	DoTotal
+	DoClose
+)
+
 func main() {
 	fmt.Printf("dnsstresss - dns stress tool\n")
 
@@ -79,21 +87,27 @@ func main() {
 	// Create a channel for communicating the number of sent messages
 	sentCounterCh := make(chan result, concurrency)
 
+	controlChannel := make(chan ControlMsg)
+	if !flood {
+		go timerStats(controlChannel)
+		fmt.Printf("Started timer channel.\n")
+	} else {
+		fmt.Println("Flooding mode, nothing will be printed.")
+	}
+	// We still need this useless routine to empty the channels, even when flooding
+	go displayStats(sentCounterCh, controlChannel)
+
 	// Run concurrently
 	for threadID := 0; threadID < concurrency; threadID++ {
 		go linearResolver(threadID, targetDomains[threadID%len(targetDomains)], sentCounterCh)
 	}
 	fmt.Printf("Started %d threads.\n", concurrency)
 
-	if !flood {
-		go timerStats(sentCounterCh)
-		fmt.Printf("Started timer channel.\n")
-	} else {
-		fmt.Println("Flooding mode, nothing will be printed.")
-	}
-	// We still need this useless routine to empty the channels, even when flooding
-	displayStats(sentCounterCh)
+	fmt.Print("Press ENTER to quit")
+	fmt.Scanln()
 
+	controlChannel <- DoTotal
+	controlChannel <- DoClose
 }
 
 func linearResolver(threadID int, domain string, sentCounterCh chan<- result) {
@@ -113,6 +127,8 @@ func linearResolver(threadID int, domain string, sentCounterCh chan<- result) {
 	}
 
 	for {
+		nbSent := 0
+		var lastErr error
 		for i := 0; i < displayStep; i++ {
 			// Try to resolve the domain
 			if randomIds {
@@ -124,34 +140,45 @@ func linearResolver(threadID int, domain string, sentCounterCh chan<- result) {
 			if flood {
 				go dnsExchange(resolver, message)
 			} else {
-				err := dnsExchange(resolver, message)
+				sent, err := dnsExchange(resolver, message)
 				if err != nil {
 					if verbose {
 						fmt.Printf("%s error: % (%s)\n", domain, err, resolver)
 					}
 					errors++
+					lastErr = err
 				}
+				nbSent += sent
 			}
 		}
 
+		// If sending doesn't work, there is probably a non-network error, so we abort and print the error
+		if nbSent == 0 && errors > 0 {
+			fmt.Printf("%s error: % (%s)\n", domain, lastErr, resolver)
+			return
+		}
+
 		// Update the counter of sent requests and requests
-		sentCounterCh <- result{displayStep, errors}
+		sentCounterCh <- result{nbSent, errors}
 		errors = 0
 	}
 }
 
-func dnsExchange(resolver string, message *dns.Msg) error {
+func dnsExchange(resolver string, message *dns.Msg) (int, error) {
 	//XXX: How can we share the connection between subsequent attempts ?
 	dnsconn, err := net.Dial("udp", resolver)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	co := &dns.Conn{Conn: dnsconn}
 	defer co.Close()
 
 	// Actually send the message and wait for answer
 	co.WriteMsg(message)
+	if err != nil {
+		return 0, err
+	}
 
 	_, err = co.ReadMsg()
-	return err
+	return 1, err
 }

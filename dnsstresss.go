@@ -1,11 +1,9 @@
 package main
 
 import (
-	"crypto/rand"
 	"flag"
 	"fmt"
 	"github.com/miekg/dns"
-	"math/big"
 	"net"
 	"os"
 	"strings"
@@ -18,13 +16,13 @@ var (
 	verbosity       int
 	iterative       bool
 	resolver        string
-	randomIds       bool
 	flood           bool
 	targetDomains   []string
 )
 
 type result struct {
 	sent int
+	recv int
 	err  int
 }
 
@@ -43,6 +41,8 @@ const (
 	Verb_INFO
 	Verb_DEBUG
 )
+
+const maxRequestID = 65536
 
 func main() {
 
@@ -110,11 +110,9 @@ func linearResolver(threadID int, domain string, sentCounterCh chan<- result) {
 	}
 
 	// Every N steps, we will tell the stats module how many requests we sent
-	maxRequestID := big.NewInt(65536)
-	errors := 0
 
 	if co, err := initConn(); err != nil {
-		sentCounterCh <- result{0, 1}
+		sentCounterCh <- result{0, 0, 1}
 		return
 	} else {
 		defer co.Close()
@@ -122,35 +120,29 @@ func linearResolver(threadID int, domain string, sentCounterCh chan<- result) {
 		message := composeMessage(domain)
 
 		for {
-			nbSent := 0
-			// Try to resolve the domain
-			if randomIds {
-				// Regenerate message Id to avoid servers dropping (seemingly) duplicate messages
-				newid, _ := rand.Int(rand.Reader, maxRequestID)
-				message.Id = uint16(newid.Int64())
-			}
-
 			// Actually send the message and wait for answer
 			err = co.WriteMsg(message)
 			if err != nil {
 				if verbosity >= Verb_ERR {
 					fmt.Printf("%s error: % (%s)\n", domain, err, resolver)
 				}
-				sentCounterCh <- result{0, 1}
+				sentCounterCh <- result{0, 0, 1}
 				return
 			}
-			sentCounterCh <- result{1, 0}
+			sentCounterCh <- result{1, 0, 0}
 
 			_, err = co.ReadMsg()
 			if err != nil {
 				if verbosity >= Verb_DEBUG {
 					fmt.Printf("%s error: % (%s)\n", domain, err, resolver)
 				}
+				sentCounterCh <- result{0, 0, 1}
+				err = nil
+			} else {
+				sentCounterCh <- result{0, 1, 0}
 			}
-
-			// Update the counter of sent requests and requests
-			sentCounterCh <- result{0, 1}
-			err = nil
+			// Change the request ID for next request
+			message.Id++
 		}
 	}
 }
@@ -162,8 +154,6 @@ func parseCommandLine() {
 		"Update interval of the stats (in ms)")
 	verbose := flag.Bool("v", false, "Verbose logging")
 	quiet := flag.Bool("q", false, "Less logging")
-	flag.BoolVar(&randomIds, "random", false,
-		"Use random Request Identifiers for each query")
 	flag.BoolVar(&iterative, "i", false,
 		"Do an iterative query instead of recursive (to stress authoritative nameservers)")
 	flag.StringVar(&resolver, "r", "127.0.0.1:53",

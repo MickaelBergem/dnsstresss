@@ -18,6 +18,7 @@ func displayStats(channel <-chan result, controlChannel <-chan ControlMsg) {
 	start := time.Now()
 	last := start
 	sent := 0
+	recv := 0
 	errors := 0
 	total := 0
 	for {
@@ -27,7 +28,7 @@ func displayStats(channel <-chan result, controlChannel <-chan ControlMsg) {
 				return
 			} else {
 				var elapsedSeconds float64
-				total += sent
+				total += recv
 				if msg == DoTotal {
 					elapsedSeconds = float64(time.Since(start)) / float64(time.Second)
 					sent = total
@@ -43,13 +44,10 @@ func displayStats(channel <-chan result, controlChannel <-chan ControlMsg) {
 						round(float64(sent)/elapsedSeconds),
 						total,
 					)
-					// Successful requests? (replies received)
-					if sent > 0 {
-						fmt.Printf(
-							"\tReplies received: %dr/s",
-							round(float64(sent-errors)/elapsedSeconds),
-						)
-					}
+					fmt.Printf(
+						"\tReplies received: %dr/s",
+						round(float64(recv)/elapsedSeconds),
+					)
 					if errors > 0 {
 						pct := 0
 						if sent > 0 {
@@ -67,11 +65,13 @@ func displayStats(channel <-chan result, controlChannel <-chan ControlMsg) {
 				fmt.Print("\n")
 				last = time.Now()
 				sent = 0
+				recv = 0
 				errors = 0
 			}
 		// Read the channel and add the number of sent messages
 		case added := <-channel:
 			sent += added.sent
+			recv += added.recv
 			errors += added.err
 		}
 	}

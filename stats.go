@@ -46,31 +46,37 @@ func displayStats(channel chan statsMessage) {
 
 			elapsedSeconds := time.Since(start).Seconds()
 
-			fmt.Printf(
-				"Requests sent: %6.dr/s",
-				round(float64(sent)/elapsedSeconds),
-			)
-			// Successful requests? (replies received)
-			fmt.Printf(
-				"\tReplies received: %6.dr/s",
-				round(float64(sent-errors)/elapsedSeconds),
-			)
-
-			fmt.Printf(
-				" (mean=%.0fms / max=%.0fms)",
-				1000.*elapsed.Seconds()/float64(sent),
-				1000.*maxElapsed.Seconds(),
-			)
-
-			if errors > 0 {
+			if sent > 0 {
 				fmt.Printf(
-					"\t %s",
-					aurora.Red(fmt.Sprintf("Errors: %d (%d%%)",
-						errors,
-						100*errors/sent,
-					)),
+					"Requests sent: %6.dr/s",
+					round(float64(sent)/elapsedSeconds),
 				)
+
+				// Successful requests? (replies received)
+				fmt.Printf(
+					"\tReplies received: %6.dr/s",
+					round(float64(sent-errors)/elapsedSeconds),
+				)
+
+				fmt.Printf(
+					" (mean=%.0fms / max=%.0fms)",
+					1000.*elapsed.Seconds()/float64(sent),
+					1000.*maxElapsed.Seconds(),
+				)
+
+				if errors > 0 {
+					fmt.Printf(
+						"\t %s",
+						aurora.Red(fmt.Sprintf("Errors: %d (%d%%)",
+							errors,
+							100*errors/sent,
+						)),
+					)
+				}
+			} else {
+				fmt.Printf("No requests were sent.")
 			}
+
 			fmt.Print("\n")
 
 			start = time.Now()

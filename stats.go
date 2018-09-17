@@ -13,7 +13,13 @@ func round(val float64) int {
 	return int(val + 0.5)
 }
 
-func displayStats(channel <-chan result) {
+type statsMessage struct {
+	sent  int
+	err   int
+	flush bool
+}
+
+func displayStats(channel chan statsMessage) {
 	// Displays every N seconds the number of sent requests, and the rate
 	start := time.Now()
 	sent := 0
@@ -25,7 +31,7 @@ func displayStats(channel <-chan result) {
 		sent += added.sent
 		errors += added.err
 
-		if added.sent == 0 {
+		if added.flush == true {
 			// Something has asked for a display flush
 
 			elapsedSeconds := float64(time.Since(start)) / float64(time.Second)
@@ -58,11 +64,11 @@ func displayStats(channel <-chan result) {
 	}
 }
 
-func timerStats(channel chan<- result) {
+func timerStats(channel chan<- statsMessage) {
 	// Periodically triggers a display update for the stats
 	for {
 		timer := time.NewTimer(time.Duration(displayInterval) * time.Millisecond)
 		<-timer.C
-		channel <- result{0, 0}
+		channel <- statsMessage{flush: true}
 	}
 }

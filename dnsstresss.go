@@ -4,11 +4,13 @@ import (
 	"crypto/rand"
 	"flag"
 	"fmt"
-	"github.com/miekg/dns"
 	"math/big"
 	"net"
 	"os"
 	"strings"
+
+	"github.com/logrusorgru/aurora"
+	"github.com/miekg/dns"
 )
 
 // Runtime options
@@ -39,13 +41,8 @@ func init() {
 		"Don't wait for an answer before sending another")
 }
 
-type result struct {
-	sent int
-	err  int
-}
-
 func main() {
-	fmt.Printf("dnsstresss - dns stress tool\n")
+	fmt.Printf("dnsstresss - dns stress tool\n\n")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, strings.Join([]string{
@@ -64,6 +61,12 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
+
+	if !strings.Contains(resolver, ":") {
+		// Automatically append the default port number if missing
+		resolver = resolver + ":53"
+	}
+
 	// all remaining parameters are treated as domains to be used in round-robin in the threads
 	targetDomains := make([]string, flag.NArg())
 	for index, element := range flag.Args() {
@@ -74,29 +77,47 @@ func main() {
 		}
 	}
 
-	fmt.Printf("Queried domains: %v.\n", targetDomains)
+	fmt.Printf("Target domains: %v.\n", targetDomains)
+	hasErrors := false
+	for i := range targetDomains {
+		hasErrors = hasErrors || testRequest(targetDomains[i])
+	}
+	if hasErrors {
+		fmt.Printf("%s %s", aurora.BgBrown(" WARNING "), "Could not resolve some domains you provided, you may receive only errors.\n")
+	}
 
 	// Create a channel for communicating the number of sent messages
-	sentCounterCh := make(chan result, concurrency)
+	sentCounterCh := make(chan statsMessage, concurrency)
 
 	// Run concurrently
 	for threadID := 0; threadID < concurrency; threadID++ {
 		go linearResolver(threadID, targetDomains[threadID%len(targetDomains)], sentCounterCh)
 	}
-	fmt.Printf("Started %d threads.\n", concurrency)
+	fmt.Print(aurora.Gray(fmt.Sprintf("Started %d threads.\n", concurrency)))
 
 	if !flood {
 		go timerStats(sentCounterCh)
-		fmt.Printf("Started timer channel.\n")
 	} else {
 		fmt.Println("Flooding mode, nothing will be printed.")
 	}
 	// We still need this useless routine to empty the channels, even when flooding
 	displayStats(sentCounterCh)
-
 }
 
-func linearResolver(threadID int, domain string, sentCounterCh chan<- result) {
+func testRequest(domain string) bool {
+	message := new(dns.Msg).SetQuestion(domain, dns.TypeA)
+	if iterative {
+		message.RecursionDesired = false
+	}
+	err := dnsExchange(resolver, message)
+	if err != nil {
+		fmt.Printf("Checking \"%s\" failed: %+v (using %s)\n", domain, aurora.Red(err), resolver)
+		return true
+	}
+	return false
+}
+
+func linearResolver(threadID int, domain string, sentCounterCh chan<- statsMessage) {
 	// Resolve the domain as fast as possible
 	if verbose {
 		fmt.Printf("Starting thread #%d.\n", threadID)
@@ -127,7 +148,7 @@ func linearResolver(threadID int, domain string, sentCounterCh chan<- result) {
 				err := dnsExchange(resolver, message)
 				if err != nil {
 					if verbose {
-						fmt.Printf("%s error: % (%s)\n", domain, err, resolver)
+						fmt.Printf("%s error: %d (%s)\n", domain, err, resolver)
 					}
 					errors++
 				}
@@ -135,7 +156,7 @@ func linearResolver(threadID int, domain string, sentCounterCh chan<- result) {
 		}
 
 		// Update the counter of sent requests and requests
-		sentCounterCh <- result{displayStep, errors}
+		sentCounterCh <- statsMessage{sent: displayStep, err: errors}
 		errors = 0
 	}
 }

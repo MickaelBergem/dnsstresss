@@ -48,13 +48,15 @@ func displayStats(channel chan statsMessage) {
 
 			if sent > 0 {
 				fmt.Printf(
-					"Requests sent: %6.dr/s",
+					"%s %6.dr/s",
+					aurora.Gray("Requests sent:"),
 					round(float64(sent)/elapsedSeconds),
 				)
 
 				// Successful requests? (replies received)
 				fmt.Printf(
-					"\tReplies received: %6.dr/s",
+					"\t%s %6.dr/s",
+					aurora.Gray("Replies received:"),
 					round(float64(sent-errors)/elapsedSeconds),
 				)
 

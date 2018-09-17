@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"time"
+
+	"github.com/logrusorgru/aurora"
 )
 
 func round(val float64) int {
@@ -14,15 +16,19 @@ func round(val float64) int {
 }
 
 type statsMessage struct {
-	sent  int
-	err   int
-	flush bool
+	sent       int
+	err        int
+	flush      bool
+	elapsed    time.Duration
+	maxElapsed time.Duration
 }
 
 func displayStats(channel chan statsMessage) {
 	// Displays every N seconds the number of sent requests, and the rate
 	start := time.Now()
 	sent := 0
+	var elapsed time.Duration
+	var maxElapsed time.Duration
 	errors := 0
 	total := 0
 	for {
@@ -30,28 +36,39 @@ func displayStats(channel chan statsMessage) {
 		added := <-channel
 		sent += added.sent
 		errors += added.err
+		elapsed += added.elapsed
+		if added.maxElapsed > maxElapsed {
+			maxElapsed = added.maxElapsed
+		}
 
 		if added.flush == true {
 			// Something has asked for a display flush
 
-			elapsedSeconds := float64(time.Since(start)) / float64(time.Second)
+			elapsedSeconds := time.Since(start).Seconds()
 
 			fmt.Printf(
-				"Requests sent: %dr/s\t(%d total)",
+				"Requests sent: %6.dr/s",
 				round(float64(sent)/elapsedSeconds),
-				total+sent,
 			)
 			// Successful requests? (replies received)
 			fmt.Printf(
-				"\tReplies received: %dr/s",
+				"\tReplies received: %6.dr/s",
 				round(float64(sent-errors)/elapsedSeconds),
+			)
+
+			fmt.Printf(
+				" (mean=%.0fms / max=%.0fms)",
+				1000.*elapsed.Seconds()/float64(sent),
+				1000.*maxElapsed.Seconds(),
 			)
 
 			if errors > 0 {
 				fmt.Printf(
-					"\t Errors: %d (%d%%)",
-					errors,
-					100*errors/sent,
+					"\t %s",
+					aurora.Red(fmt.Sprintf("Errors: %d (%d%%)",
+						errors,
+						100*errors/sent,
+					)),
 				)
 			}
 			fmt.Print("\n")
@@ -60,6 +77,8 @@ func displayStats(channel chan statsMessage) {
 			total += sent
 			sent = 0
 			errors = 0
+			elapsed = 0
+			maxElapsed = 0
 		}
 	}
 }

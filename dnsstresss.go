@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/logrusorgru/aurora"
 	"github.com/miekg/dns"
@@ -133,6 +134,10 @@ func linearResolver(threadID int, domain string, sentCounterCh chan<- statsMessa
 		message.RecursionDesired = false
 	}
 
+	var start time.Time
+	var elapsed time.Duration    // Total time spent resolving
+	var maxElapsed time.Duration // Maximum time took by a request
+
 	for {
 		for i := 0; i < displayStep; i++ {
 			// Try to resolve the domain
@@ -145,7 +150,13 @@ func linearResolver(threadID int, domain string, sentCounterCh chan<- statsMessa
 			if flood {
 				go dnsExchange(resolver, message)
 			} else {
+				start = time.Now()
 				err := dnsExchange(resolver, message)
+				spent := time.Since(start)
+				elapsed += spent
+				if spent > maxElapsed {
+					maxElapsed = spent
+				}
 				if err != nil {
 					if verbose {
 						fmt.Printf("%s error: %d (%s)\n", domain, err, resolver)
@@ -156,8 +167,15 @@ func linearResolver(threadID int, domain string, sentCounterCh chan<- statsMessa
 		}
 
 		// Update the counter of sent requests and requests
-		sentCounterCh <- statsMessage{sent: displayStep, err: errors}
+		sentCounterCh <- statsMessage{
+			sent:       displayStep,
+			err:        errors,
+			elapsed:    elapsed,
+			maxElapsed: maxElapsed,
+		}
 		errors = 0
+		elapsed = 0
+		maxElapsed = 0
 	}
 }
 

@@ -24,6 +24,9 @@ Then:
     -r="127.0.0.1:53": Resolver to test against
     -v=false: Verbose logging
 
+For IPv6 resolvers, use brackets and quotes:
+
+    ./dnsstresss -r "[2001:4860:4860::8888]:53" -v google.com.
 
 Example:
 

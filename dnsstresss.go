@@ -63,7 +63,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if !strings.Contains(resolver, ":") {
+	if !strings.Contains(resolver, ":") { // TODO: improve this test to make it work with IPv6 addresses
 		// Automatically append the default port number if missing
 		resolver = resolver + ":53"
 	}

@@ -8,7 +8,9 @@ It displays the number of queries made, along with the answer per second rate re
 
 First:
 
-    go get github.com/MickaelBergem/dnsstresss
+    go get github.com/stb2132/dnsstresss
+
+(Credit to original writer [Mickael Bergem](https://github.com/MickaelBergem/dnsstresss))
 
 Then:
 

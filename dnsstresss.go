@@ -23,6 +23,7 @@ var (
 	resolver        string
 	randomIds       bool
 	flood           bool
+	au aurora.Aurora
 )
 
 func init() {
@@ -62,6 +63,7 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
+	au = aurora.NewAurora(true)
 
 	if !strings.Contains(resolver, ":") { // TODO: improve this test to make it work with IPv6 addresses
 		// Automatically append the default port number if missing
@@ -84,7 +86,7 @@ func main() {
 		hasErrors = hasErrors || testRequest(targetDomains[i])
 	}
 	if hasErrors {
-		fmt.Printf("%s %s", aurora.BgBrown(" WARNING "), "Could not resolve some domains you provided, you may receive only errors.\n")
+		fmt.Printf("%s %s", au.BgYellow(" WARNING "), "Could not resolve some domains you provided, you may receive only errors.\n")
 	}
 
 	// Create a channel for communicating the number of sent messages
@@ -94,7 +96,7 @@ func main() {
 	for threadID := 0; threadID < concurrency; threadID++ {
 		go linearResolver(threadID, targetDomains[threadID%len(targetDomains)], sentCounterCh)
 	}
-	fmt.Print(aurora.Gray(fmt.Sprintf("Started %d threads.\n", concurrency)))
+	fmt.Print(au.Blue(fmt.Sprintf("Started %d threads.\n", concurrency)))
 
 	if !flood {
 		go timerStats(sentCounterCh)
@@ -112,7 +114,7 @@ func testRequest(domain string) bool {
 	}
 	err := dnsExchange(resolver, message)
 	if err != nil {
-		fmt.Printf("Checking \"%s\" failed: %+v (using %s)\n", domain, aurora.Red(err), resolver)
+		fmt.Printf("Checking \"%s\" failed: %+v (using %s)\n", domain, au.Red(err), resolver)
 		return true
 	}
 	return false

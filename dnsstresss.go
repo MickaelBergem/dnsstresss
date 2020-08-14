@@ -4,33 +4,35 @@ import (
 	"crypto/rand"
 	"flag"
 	"fmt"
+	"log"
 	"math/big"
 	"net"
 	"os"
 	"strings"
-	"time"
 
+	"github.com/DataDog/datadog-go/statsd"
 	"github.com/logrusorgru/aurora"
 	"github.com/miekg/dns"
 )
 
-// Runtime options
 var (
-	concurrency     int
-	displayInterval int
-	verbose         bool
-	iterative       bool
-	resolver        string
-	randomIds       bool
-	flood           bool
-	au aurora.Aurora
+	concurrency   int
+	flushInterval int
+	verbose       bool
+	iterative     bool
+	resolver      string
+	randomIds     bool
+	flood         bool
+	au            aurora.Aurora
+	DatadogStatsd *statsd.Client
+
 )
 
 func init() {
 	flag.IntVar(&concurrency, "concurrency", 50,
 		"Internal buffer")
-	flag.IntVar(&displayInterval, "d", 1000,
-		"Update interval of the stats (in ms)")
+	flag.IntVar(&flushInterval, "l", 1000,
+		"flush interval of the stats (in ms)")
 	flag.BoolVar(&verbose, "v", false,
 		"Verbose logging")
 	flag.BoolVar(&randomIds, "random", false,
@@ -41,6 +43,16 @@ func init() {
 		"Resolver to test against")
 	flag.BoolVar(&flood, "f", false,
 		"Don't wait for an answer before sending another")
+	DatadogStatsd = InitApp()
+}
+
+func InitApp() *statsd.Client{
+	statsd, err := statsd.New("127.0.0.1:8125")
+	if err != nil {
+		log.Fatal(err)
+		return nil
+	}
+	return statsd
 }
 
 func main() {
@@ -104,7 +116,7 @@ func main() {
 		fmt.Println("Flooding mode, nothing will be printed.")
 	}
 	// We still need this useless routine to empty the channels, even when flooding
-	displayStats(sentCounterCh)
+	flushStats(sentCounterCh)
 }
 
 func testRequest(domain string) bool {
@@ -112,7 +124,7 @@ func testRequest(domain string) bool {
 	if iterative {
 		message.RecursionDesired = false
 	}
-	err := dnsExchange(resolver, message)
+	_, err := dnsExchange(resolver, message)
 	if err != nil {
 		fmt.Printf("Checking \"%s\" failed: %+v (using %s)\n", domain, au.Red(err), resolver)
 		return true
@@ -130,15 +142,13 @@ func linearResolver(threadID int, domain string, sentCounterCh chan<- statsMessa
 	displayStep := 5
 	maxRequestID := big.NewInt(65536)
 	errors := 0
+	// Calculated from the length of the dns message sent
+	bytesSent := 0
 
 	message := new(dns.Msg).SetQuestion(domain, dns.TypeA)
 	if iterative {
 		message.RecursionDesired = false
 	}
-
-	var start time.Time
-	var elapsed time.Duration    // Total time spent resolving
-	var maxElapsed time.Duration // Maximum time took by a request
 
 	for {
 		for i := 0; i < displayStep; i++ {
@@ -152,13 +162,8 @@ func linearResolver(threadID int, domain string, sentCounterCh chan<- statsMessa
 			if flood {
 				go dnsExchange(resolver, message)
 			} else {
-				start = time.Now()
-				err := dnsExchange(resolver, message)
-				spent := time.Since(start)
-				elapsed += spent
-				if spent > maxElapsed {
-					maxElapsed = spent
-				}
+				len, err := dnsExchange(resolver, message)
+				bytesSent += len
 				if err != nil {
 					if verbose {
 						fmt.Printf("%s error: %d (%s)\n", domain, err, resolver)
@@ -170,22 +175,19 @@ func linearResolver(threadID int, domain string, sentCounterCh chan<- statsMessa
 
 		// Update the counter of sent requests and requests
 		sentCounterCh <- statsMessage{
-			sent:       displayStep,
-			err:        errors,
-			elapsed:    elapsed,
-			maxElapsed: maxElapsed,
+			sent:          displayStep,
+			err:           errors,
+			bytesSent: bytesSent,
 		}
 		errors = 0
-		elapsed = 0
-		maxElapsed = 0
+		bytesSent = 0
 	}
 }
 
-func dnsExchange(resolver string, message *dns.Msg) error {
-	//XXX: How can we share the connection between subsequent attempts ?
+func dnsExchange(resolver string, message *dns.Msg) (int, error) {
 	dnsconn, err := net.Dial("udp", resolver)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	co := &dns.Conn{Conn: dnsconn}
 	defer co.Close()
@@ -194,5 +196,6 @@ func dnsExchange(resolver string, message *dns.Msg) error {
 	co.WriteMsg(message)
 
 	_, err = co.ReadMsg()
-	return err
+
+	return message.Len(), err
 }

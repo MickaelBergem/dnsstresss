@@ -3,98 +3,59 @@ package main
 import (
 	"fmt"
 	"time"
-
-	"github.com/logrusorgru/aurora"
 )
-
-func round(val float64) int {
-	// Go seemed a sweet language in the beginning...
-	if val < 0 {
-		return int(val - 0.5)
-	}
-	return int(val + 0.5)
-}
 
 type statsMessage struct {
 	sent       int
 	err        int
+	bytesSent  int
 	flush      bool
-	elapsed    time.Duration
-	maxElapsed time.Duration
 }
 
-func displayStats(channel chan statsMessage) {
-	// Displays every N seconds the number of sent requests, and the rate
-	start := time.Now()
+func flushStats(channel chan statsMessage) {
 	sent := 0
-	var elapsed time.Duration
-	var maxElapsed time.Duration
 	errors := 0
 	total := 0
+	bytesSent := 0
+	totalBytesSent := 0
+
 	for {
 		// Read the channel and add the number of sent messages
 		added := <-channel
 		sent += added.sent
 		errors += added.err
-		elapsed += added.elapsed
-		if added.maxElapsed > maxElapsed {
-			maxElapsed = added.maxElapsed
-		}
+		bytesSent += added.bytesSent
 
 		if added.flush == true {
 			// Something has asked for a display flush
 
-			elapsedSeconds := time.Since(start).Seconds()
-
 			if sent > 0 {
-				fmt.Printf(
-					"%s %6.dr/s",
-					aurora.Green( "Requests sent:"),
-					round(float64(sent)/elapsedSeconds),
-				)
+				DatadogStatsd.Count("npm.udp.testing.sent_packets", int64(sent), nil, 1)
 
-				// Successful requests? (replies received)
-				fmt.Printf(
-					"\t%s %6.dr/s",
-					aurora.Green( "Replies received:"),
-					round(float64(sent-errors)/elapsedSeconds),
-				)
+				DatadogStatsd.Count("npm.udp.testing.successful_requests", int64(sent-errors), nil, 1)
 
-				fmt.Printf(
-					" (mean=%.0fms / max=%.0fms)",
-					1000.*elapsed.Seconds()/float64(sent),
-					1000.*maxElapsed.Seconds(),
-				)
+				DatadogStatsd.Count("npm.udp.testing.bytes_sent", int64(bytesSent), nil, 1)
 
 				if errors > 0 {
-					fmt.Printf(
-						"\t %s",
-						aurora.Red(fmt.Sprintf("Errors: %d (%d%%)",
-							errors,
-							100*errors/sent,
-						)),
-					)
+					DatadogStatsd.Count("npm.udp.testing.errors", int64(errors), nil, 1)
 				}
 			} else {
 				fmt.Printf("No requests were sent.")
 			}
 
-			fmt.Print("\n")
-
-			start = time.Now()
 			total += sent
+			totalBytesSent += bytesSent
 			sent = 0
 			errors = 0
-			elapsed = 0
-			maxElapsed = 0
+			bytesSent = 0
 		}
 	}
 }
 
 func timerStats(channel chan<- statsMessage) {
-	// Periodically triggers a display update for the stats
+	// Triggers a stat flush every second
 	for {
-		timer := time.NewTimer(time.Duration(displayInterval) * time.Millisecond)
+		timer := time.NewTimer(time.Duration(flushInterval) * time.Millisecond)
 		<-timer.C
 		channel <- statsMessage{flush: true}
 	}

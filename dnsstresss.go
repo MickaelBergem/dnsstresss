@@ -78,7 +78,9 @@ func main() {
 		}
 	}
 
-	fmt.Printf("Target domains: %v.\n", targetDomains)
+	fmt.Printf("Testing resolver: %s.\n", aurora.Bold(resolver))
+	fmt.Printf("Target domains: %v.\n\n", targetDomains)
+
 	hasErrors := false
 	for i := range targetDomains {
 		hasErrors = hasErrors || testRequest(targetDomains[i])
@@ -94,7 +96,7 @@ func main() {
 	for threadID := 0; threadID < concurrency; threadID++ {
 		go linearResolver(threadID, targetDomains[threadID%len(targetDomains)], sentCounterCh)
 	}
-	fmt.Print(aurora.Gray(fmt.Sprintf("Started %d threads.\n", concurrency)))
+	fmt.Print(aurora.Faint(fmt.Sprintf("Started %d threads.\n", concurrency)))
 
 	if !flood {
 		go timerStats(sentCounterCh)

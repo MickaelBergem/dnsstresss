@@ -63,9 +63,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	if !strings.Contains(resolver, ":") { // TODO: improve this test to make it work with IPv6 addresses
-		// Automatically append the default port number if missing
-		resolver = resolver + ":53"
+	parsedResolver, err := ParseIPPort(resolver)
+	resolver = parsedResolver
+	if err != nil {
+		fmt.Println(aurora.Sprintf(aurora.Red("%s (%s)"), "Unable to parse the resolver address", err))
+		os.Exit(2)
 	}
 
 	// all remaining parameters are treated as domains to be used in round-robin in the threads

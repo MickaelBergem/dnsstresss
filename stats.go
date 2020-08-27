@@ -30,7 +30,8 @@ func displayStats(channel chan statsMessage) {
 	var elapsed time.Duration
 	var maxElapsed time.Duration
 	errors := 0
-	total := 0
+	totalSent := 0
+	totalReceived := 0
 	for {
 		// Read the channel and add the number of sent messages
 		added := <-channel
@@ -76,13 +77,14 @@ func displayStats(channel chan statsMessage) {
 					)
 				}
 			} else {
-				fmt.Printf("No requests were sent.")
+				fmt.Printf("No requests were sent %s", aurora.Sprintf(aurora.Faint("(total responses received: %d)"), totalReceived))
 			}
 
 			fmt.Print("\n")
 
 			start = time.Now()
-			total += sent
+			totalSent += sent
+			totalReceived += sent - errors
 			sent = 0
 			errors = 0
 			elapsed = 0

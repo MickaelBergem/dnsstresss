@@ -1,0 +1,20 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dnsstress-job
+  namespace: kube-system  # CoreDNS is in the kube-system namespace by default
+spec:
+  template:
+    metadata:
+      name: dnsstress
+    spec:
+      containers:
+        - name: dnsstress
+          image: 827486962587.dkr.ecr.us-east-1.amazonaws.com/dnsstress:latest
+          command: ["/dnsstress", "-r", "172.20.0.10", "google.com","-concurrency","50000", "-v"]
+          env:
+            - name: SERVER
+              value: "172.20.0.10"  # CoreDNS service IP
+      restartPolicy: Never
+  backoffLimit: 4

@@ -1,0 +1,46 @@
+# This manifesto is used by Backstage to register your service in the catalog
+# For detailed documentation about the different fields please check:
+# https://kueski.atlassian.net/wiki/spaces/TSDK/pages/2549186971/Backstage+service+information
+#
+# You can also check backstage main documentation:
+# https://backstage.io/docs/features/software-catalog/descriptor-format
+#
+# Just remember that the internal confluence documentation contains changes and
+# the conventions we support for these manifestos
+
+# Please replace all ocurrences of <***> with correct values
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: dnsstress
+  title: dnsstress
+  # Description. A human readable description of the service,
+  # to be shown in Backstage
+  description: PoC for CoreDNS stress testing
+  supportlvl: standard #[deprecated, legacy, standard]
+  maintainer: camilo.tribin@kueski.com
+  visibility: private #[public,protected,private]
+  root: technology #The root domain is the highest level domain that the repository is part of.
+  subdomain: platform-tooling
+  labels:
+    has_kueski_yaml: "false"
+    is_critical: "false"
+  tags:
+    - k8s
+spec:
+  type: library
+  # Owner. Is the team that has the authority and capability
+  # to develop and maintain it.
+  # Group format -> <GROUP_NAME> ->
+  # -> owner: platform (Requires to be a registered backstage team)
+  # To know how to add a new team to backstage, check the FAQs section.
+  # https://kueski.atlassian.net/wiki/spaces/TSDK/pages/2632941631/Backstage+User+Doc#Frequently-Asked-Questions-(FAQs)
+  owner: platform
+  lifecycle: development
+  # The domain is the business domain that the repository is a part of.
+  # Check the domain list https://kueski.atlassian.net/wiki/spaces/TSDK/pages/2549186971/Backstage+service+information
+  domain: infrastructure
+  dependsOn: []
+  providesApis: []
+  consumesApis: []

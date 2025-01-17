@@ -12,7 +12,7 @@ spec:
       containers:
         - name: dnsstress
           image: 827486962587.dkr.ecr.us-east-1.amazonaws.com/dnsstress:latest
-          command: ["/dnsstress", "-r", "172.20.0.10", "google.com","-concurrency","50000", "-v"]
+          command: ["/dnsstress", "-r", "172.20.0.10", "google.com","-concurrency","100", "-v"]
           env:
             - name: SERVER
               value: "172.20.0.10"  # CoreDNS service IP
